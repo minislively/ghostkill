@@ -1,6 +1,7 @@
 import Foundation
 
-let version = "0.2.0"
+let ghostkillVersion = "0.2.0"
+let version = ghostkillVersion
 
 func main() {
     let args = CommandLine.arguments.dropFirst()
@@ -18,8 +19,38 @@ func main() {
     let fix = args.contains("--fix") || args.contains("-f")
     let watch = args.contains("--watch") || args.contains("-w")
 
-    // --app <name> handling
+    // --scan-notify: silent scan + macOS notification if issues found
+    if args.contains("--scan-notify") {
+        Daemon.scanAndNotify()
+        return
+    }
+
+    // --ai-prompt: generate AI prompt and copy to clipboard
+    if args.contains("--ai-prompt") {
+        AIPrompt.generate()
+        return
+    }
+
+    // --daemon start|stop|status
     let argsArray = Array(args)
+    if let daemonIdx = argsArray.firstIndex(of: "--daemon") {
+        let subcommand = daemonIdx + 1 < argsArray.count ? argsArray[daemonIdx + 1] : "status"
+        switch subcommand {
+        case "start":
+            Daemon.start()
+        case "stop":
+            Daemon.stop()
+        case "status":
+            Daemon.status()
+        default:
+            print("Unknown daemon subcommand: \(subcommand)")
+            print("Usage: ghostkill --daemon [start|stop|status]")
+            exit(1)
+        }
+        return
+    }
+
+    // --app <name> handling
     if let appIdx = argsArray.firstIndex(of: "--app"), appIdx + 1 < argsArray.count {
         let appName = argsArray[appIdx + 1]
         print(Detector.scanApp(name: appName))
@@ -127,11 +158,16 @@ func printHelp() {
 ghostkill - macOS process environment diagnostics and cleanup
 
 Usage:
-  ghostkill              Diagnose current environment
-  ghostkill --fix        Auto-clean problematic processes
-  ghostkill --watch      Repeat scan every 5 seconds (new issues only)
-  ghostkill --app <name> Detailed report for a specific app (PID, CPU, memory, ports)
-  ghostkill --version    Print version
+  ghostkill                       Diagnose current environment
+  ghostkill --fix                 Auto-clean problematic processes
+  ghostkill --watch               Repeat scan every 5 seconds (new issues only)
+  ghostkill --app <name>          Detailed report for a specific app (PID, CPU, memory, ports)
+  ghostkill --daemon start        Register and start the background daemon (runs every 60s)
+  ghostkill --daemon stop         Stop and unregister the background daemon
+  ghostkill --daemon status       Show whether the daemon is running
+  ghostkill --ai-prompt           Generate an AI prompt from current issues and copy to clipboard
+  ghostkill --scan-notify         Silent scan; sends macOS notification if issues are found
+  ghostkill --version             Print version
 
 Detected items:
   [zombie]           Zombie terminal sessions left by IDEs (Kiro, Cursor, VS Code, Windsurf)
