@@ -22,6 +22,8 @@ enum Killer {
                 print("  skip: \(issue.description) (정보성)")
             case "version-mismatch":
                 print("  skip: \(issue.description) (정보성 - 버전 설정 확인 필요)")
+            case "network", "disk", "temperature":
+                print("  skip: \(issue.description) (정보성)")
             default:
                 // 알 수 없는 태그는 안전하게 skip - 새 감지기 태그가 실수로 kill되지 않도록
                 print("  skip: \(issue.description) (알 수 없는 태그 '\(issue.tag)' - 명시적 승인 필요)")

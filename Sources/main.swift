@@ -18,6 +18,14 @@ func main() {
     let fix = args.contains("--fix") || args.contains("-f")
     let watch = args.contains("--watch") || args.contains("-w")
 
+    // --app <name> 처리
+    let argsArray = Array(args)
+    if let appIdx = argsArray.firstIndex(of: "--app"), appIdx + 1 < argsArray.count {
+        let appName = argsArray[appIdx + 1]
+        print(Detector.scanApp(name: appName))
+        return
+    }
+
     if watch {
         runWatch()
         return
@@ -56,6 +64,9 @@ func printGrouped(issues: [Issue]) {
         ("launch-agent",     "LaunchAgents"),
         ("login-item",       "Login Items"),
         ("timemachine",      "Time Machine"),
+        ("network",          "네트워크 상태"),
+        ("disk",             "디스크 용량"),
+        ("temperature",      "시스템 온도"),
     ]
 
     var printed = Set<String>()
@@ -116,10 +127,11 @@ func printHelp() {
 ghostkill - macOS 프로세스 환경 진단 및 정리
 
 사용법:
-  ghostkill           현재 환경 진단
-  ghostkill --fix     문제 프로세스 자동 정리
-  ghostkill --watch   5초마다 반복 스캔 (새 이슈만 출력)
-  ghostkill --version 버전 출력
+  ghostkill              현재 환경 진단
+  ghostkill --fix        문제 프로세스 자동 정리
+  ghostkill --watch      5초마다 반복 스캔 (새 이슈만 출력)
+  ghostkill --app <name> 특정 앱 상세 리포트 (PID, CPU, 메모리, 포트)
+  ghostkill --version    버전 출력
 
 감지 항목:
   [zombie]           IDE가 남긴 좀비 터미널 세션 (Kiro, Cursor, VS Code, Windsurf)
@@ -133,9 +145,11 @@ ghostkill - macOS 프로세스 환경 진단 및 정리
   [launchctl]        불필요한 launchctl 에이전트 (Adobe, Google Keystone 등)
   [launch-agent]     ~/Library/LaunchAgents plist 목록
   [login-item]       시스템 Login Items 목록
+  [network]          네트워크 연결 없음 또는 지연 높음 (200ms 이상) (정보성)
+  [disk]             루트 디스크 사용률 85% 이상 경고 (정보성)
 
 --fix 대상: zombie, zombie-state, resource
-skip 대상:  orphan, port, terminal-session, version-mismatch, launchctl, launch-agent, login-item, duplicate
+skip 대상:  orphan, port, terminal-session, version-mismatch, launchctl, launch-agent, login-item, duplicate, network, disk, temperature
 
 GitHub: https://github.com/minislively/ghostkill
 """)

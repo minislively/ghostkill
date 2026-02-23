@@ -108,6 +108,14 @@ enum Detector {
         let timeMachineIssues = scanTimeMachine()
         issues.append(contentsOf: timeMachineIssues)
 
+        // 12. 네트워크 상태 감지
+        let networkIssues = scanNetwork()
+        issues.append(contentsOf: networkIssues)
+
+        // 13. 디스크 용량 경고
+        let diskIssues = scanDisk()
+        issues.append(contentsOf: diskIssues)
+
         return issues
     }
 
@@ -426,6 +434,152 @@ enum Detector {
             pids: [],
             tag: "launch-agent"
         )]
+    }
+
+    // MARK: - 네트워크 상태 감지
+
+    static func scanNetwork() -> [Issue] {
+        // networkQuality -s -c (macOS 12+) 시도
+        let nqOutput = shell("/usr/bin/networkQuality", ["-s", "-c"])
+        if !nqOutput.isEmpty {
+            // JSON 파싱: responsiveness 또는 latency 필드
+            // 실패하지 않았으면 네트워크 양호로 간주, 지연만 체크
+            // networkQuality JSON: {"responsiveness":...,"dlThroughput":...,"ulThroughput":...}
+            // 지연은 ping fallback으로 측정
+        }
+
+        // ping -c 3 8.8.8.8 으로 지연 측정
+        let pingOutput = shell("/sbin/ping", ["-c", "3", "-t", "5", "8.8.8.8"])
+        if pingOutput.isEmpty || pingOutput.contains("Request timeout") || pingOutput.contains("100.0% packet loss") {
+            return [Issue(
+                description: "네트워크 연결 없음 또는 불안정",
+                pids: [],
+                tag: "network"
+            )]
+        }
+
+        // avg rtt 파싱: "round-trip min/avg/max/stddev = 1.234/5.678/9.012/1.000 ms"
+        for line in pingOutput.split(separator: "\n") {
+            let l = String(line)
+            if l.contains("round-trip") || l.contains("rtt") {
+                // min/avg/max/stddev
+                let parts = l.split(separator: "=")
+                if parts.count >= 2 {
+                    let stats = String(parts[1]).trimmingCharacters(in: .whitespaces)
+                    let nums = stats.split(separator: "/")
+                    if nums.count >= 2, let avg = Double(String(nums[1]).trimmingCharacters(in: .whitespaces)) {
+                        if avg >= 200.0 {
+                            return [Issue(
+                                description: "네트워크 지연 높음 (\(String(format: "%.0f", avg))ms)",
+                                pids: [],
+                                tag: "network"
+                            )]
+                        }
+                    }
+                }
+            }
+        }
+
+        return []
+    }
+
+    // MARK: - 디스크 용량 경고
+
+    static func scanDisk() -> [Issue] {
+        let output = shell("/bin/df", ["-h", "/"])
+        // df -h 출력: Filesystem  Size  Used  Avail  Capacity  iused  ifree  %iused  Mounted
+        // macOS 형식: Filesystem   Size   Used  Avail Capacity iused      ifree %iused  Mounted on
+        for line in output.split(separator: "\n").dropFirst() {
+            let cols = line.split(separator: " ", omittingEmptySubsequences: true)
+            // macOS df -h: Filesystem Size Used Avail Capacity(%) iused ifree %iused Mounted
+            // capacity는 5번째 컬럼 (index 4) 또는 "Use%" 컬럼
+            guard cols.count >= 5 else { continue }
+
+            // capacity 컬럼 찾기: "XX%" 형태
+            var capacityStr: String? = nil
+            var availStr: String? = nil
+            for (i, col) in cols.enumerated() {
+                let s = String(col)
+                if s.hasSuffix("%"), let pct = Int(s.dropLast()) {
+                    _ = pct
+                    capacityStr = s
+                    // avail은 capacity 바로 앞 컬럼
+                    if i > 0 { availStr = String(cols[i - 1]) }
+                    break
+                }
+            }
+
+            guard let capStr = capacityStr,
+                  let pct = Int(capStr.dropLast()),
+                  pct >= 85 else { continue }
+
+            let avail = availStr ?? "?"
+            return [Issue(
+                description: "디스크 용량 부족 - \(pct)% 사용 중 (남은 용량: \(avail))",
+                pids: [],
+                tag: "disk"
+            )]
+        }
+        return []
+    }
+
+    // MARK: - 특정 앱 상세 리포트
+
+    static func scanApp(name: String) -> String {
+        var lines: [String] = []
+        lines.append("=== \(name) 프로세스 상세 리포트 ===\n")
+
+        let psOutput = shell("/bin/ps", ["aux"])
+        let psLines = psOutput.split(separator: "\n").dropFirst()
+
+        var foundPIDs: [Int32] = []
+        for line in psLines {
+            let l = String(line).lowercased()
+            guard l.contains(name.lowercased()) else { continue }
+            let cols = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard cols.count >= 11,
+                  let pid = Int32(String(cols[1])) else { continue }
+
+            // ghostkill 자신 제외
+            if pid == ProcessInfo.processInfo.processIdentifier { continue }
+
+            let cpu    = String(cols[2])
+            let rssKB  = Int(String(cols[5])) ?? 0
+            let stat   = String(cols[7])
+            let start  = String(cols[8])
+            let time   = String(cols[9])
+            let cmd    = cols[10...].joined(separator: " ")
+
+            lines.append("PID: \(pid)")
+            lines.append("  명령어: \(cmd)")
+            lines.append("  CPU:   \(cpu)%")
+            lines.append("  메모리: \(String(format: "%.1f", Double(rssKB) / 1024.0))MB")
+            lines.append("  상태:  \(stat)")
+            lines.append("  시작:  \(start)  실행시간: \(time)")
+
+            // 포트 점유 확인
+            let lsofOut = shell("/usr/sbin/lsof", ["-p", "\(pid)", "-i"])
+            let ports = lsofOut.split(separator: "\n").dropFirst()
+                .filter { $0.contains("LISTEN") || $0.contains("ESTABLISHED") }
+            if !ports.isEmpty {
+                lines.append("  포트 점유:")
+                for p in ports {
+                    lines.append("    \(p)")
+                }
+            } else {
+                lines.append("  포트 점유: 없음")
+            }
+            lines.append("")
+            foundPIDs.append(pid)
+        }
+
+        if foundPIDs.isEmpty {
+            lines.append("'\(name)' 프로세스를 찾을 수 없습니다.")
+        } else {
+            lines.append("총 \(foundPIDs.count)개 프로세스 발견")
+        }
+
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - Time Machine 백업 감지
