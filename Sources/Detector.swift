@@ -104,6 +104,10 @@ enum Detector {
         let launchAgentIssues = scanLaunchAgentsDirectory()
         issues.append(contentsOf: launchAgentIssues)
 
+        // 11. Time Machine 백업 진행 중 감지
+        let timeMachineIssues = scanTimeMachine()
+        issues.append(contentsOf: timeMachineIssues)
+
         return issues
     }
 
@@ -421,6 +425,36 @@ enum Detector {
             description: "~/Library/LaunchAgents에 plist \(plists.count)개 등록됨",
             pids: [],
             tag: "launch-agent"
+        )]
+    }
+
+    // MARK: - Time Machine 백업 감지
+
+    static func scanTimeMachine() -> [Issue] {
+        let output = shell("/usr/bin/tmutil", ["status"])
+        guard !output.isEmpty else { return [] }
+
+        // Running = 1 이면 백업 진행 중
+        guard output.contains("Running = 1") else { return [] }
+
+        // 진행률 파싱 (있으면)
+        var progressInfo = ""
+        for line in output.split(separator: "\n") {
+            let l = line.trimmingCharacters(in: .whitespaces)
+            if l.hasPrefix("Percent =") {
+                let val = l.replacingOccurrences(of: "Percent = ", with: "")
+                    .replacingOccurrences(of: ";", with: "")
+                    .trimmingCharacters(in: .whitespaces)
+                if let pct = Double(val) {
+                    progressInfo = " (\(String(format: "%.0f", pct * 100))% 완료)"
+                }
+            }
+        }
+
+        return [Issue(
+            description: "Time Machine 백업 진행 중\(progressInfo) - 시스템 느릴 수 있음",
+            pids: [],
+            tag: "timemachine"
         )]
     }
 

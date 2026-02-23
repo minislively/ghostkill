@@ -55,6 +55,7 @@ func printGrouped(issues: [Issue]) {
         ("launchctl",        "LaunchCtl 에이전트"),
         ("launch-agent",     "LaunchAgents"),
         ("login-item",       "Login Items"),
+        ("timemachine",      "Time Machine"),
     ]
 
     var printed = Set<String>()
