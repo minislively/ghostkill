@@ -16,10 +16,13 @@ A macOS process diagnostics and cleanup CLI tool that detects and removes zombie
 
 ## Installation
 
-### Using Homebrew
+### Pre-built Binary (Recommended)
+
+Download the latest binary from [GitHub Releases](https://github.com/minislively/ghostkill/releases):
 
 ```bash
-brew install minislively/tap/ghostkill
+curl -L https://github.com/minislively/ghostkill/releases/latest/download/ghostkill \
+  -o /opt/homebrew/bin/ghostkill && chmod +x /opt/homebrew/bin/ghostkill
 ```
 
 ### Building from Source
@@ -30,10 +33,6 @@ cd ghostkill
 swift build -c release
 cp .build/release/ghostkill /usr/local/bin/
 ```
-
-### GitHub Releases
-
-Download pre-built binaries from [GitHub Releases](https://github.com/minislively/ghostkill/releases).
 
 ## Usage
 
