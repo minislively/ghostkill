@@ -1,6 +1,6 @@
 import Foundation
 
-let ghostkillVersion = "0.2.0"
+let ghostkillVersion = "0.2.1"
 let version = ghostkillVersion
 
 func main() {
