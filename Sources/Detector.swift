@@ -33,7 +33,7 @@ enum Detector {
         "coreaudiod", "sharingd", "syslogd", "notifyd", "logd", "powerd",
         "airportd", "bluetoothd", "locationd", "nsurlsessiond", "nsurlstoraged",
         "rapportd", "rtcreportingd", "spindump", "osanalyticshelper",
-        "thermald", "secd", "akd", "nsurlsessiond", "coreduetd",
+        "thermald", "secd", "akd", "coreduetd",
     ]
 
     static func scan() -> [Issue] {
@@ -67,12 +67,15 @@ enum Detector {
         let launchctlIssues = scanLaunchctl()
         issues.append(contentsOf: launchctlIssues)
 
+        // 4+5+8+spotlight: ps aux 한 번만 실행해 공유
+        let psLines = psAuxLines()
+
         // 4. 높은 CPU/메모리 점유 프로세스 감지
-        let resourceIssues = scanHighResourceProcesses()
+        let resourceIssues = scanHighResourceProcesses(psLines: psLines)
         issues.append(contentsOf: resourceIssues)
 
         // 5. 좀비 프로세스 (Z 상태) 감지
-        let zombieStateIssues = scanZombieStateProcesses()
+        let zombieStateIssues = scanZombieStateProcesses(psLines: psLines)
         issues.append(contentsOf: zombieStateIssues)
 
         // 6. 고아 프로세스 감지
@@ -84,7 +87,7 @@ enum Detector {
         issues.append(contentsOf: portIssues)
 
         // 8. 터미널 세션별 실행 중인 명령어 파악
-        let terminalIssues = scanTerminalSessions()
+        let terminalIssues = scanTerminalSessions(psLines: psLines)
         issues.append(contentsOf: terminalIssues)
 
         // 9. nvm/rbenv/pyenv 버전 충돌 감지
@@ -95,7 +98,7 @@ enum Detector {
         let loginItemIssues = scanLoginItems()
         issues.append(contentsOf: loginItemIssues)
 
-        let spotlightIssues = scanSpotlightOverload()
+        let spotlightIssues = scanSpotlightOverload(psLines: psLines)
         issues.append(contentsOf: spotlightIssues)
 
         let launchAgentIssues = scanLaunchAgentsDirectory()
@@ -132,12 +135,16 @@ enum Detector {
 
     // MARK: - 높은 CPU/메모리 점유 프로세스 감지
 
-    static func scanHighResourceProcesses() -> [Issue] {
-        // ps aux: USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND
+    static func psAuxLines() -> [Substring] {
         let output = shell("/bin/ps", ["aux"])
+        return Array(output.split(separator: "\n").dropFirst())
+    }
+
+    static func scanHighResourceProcesses(psLines: [Substring]) -> [Issue] {
+        // ps aux: USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND
         var issues: [Issue] = []
 
-        for line in output.split(separator: "\n").dropFirst() {
+        for line in psLines {
             let cols = line.split(separator: " ", omittingEmptySubsequences: true)
             guard cols.count >= 11 else { continue }
 
@@ -171,11 +178,10 @@ enum Detector {
 
     // MARK: - 좀비 프로세스 (Z 상태) 감지
 
-    static func scanZombieStateProcesses() -> [Issue] {
-        let output = shell("/bin/ps", ["aux"])
+    static func scanZombieStateProcesses(psLines: [Substring]) -> [Issue] {
         var zombiePIDs: [Int32] = []
 
-        for line in output.split(separator: "\n").dropFirst() {
+        for line in psLines {
             let cols = line.split(separator: " ", omittingEmptySubsequences: true)
             guard cols.count >= 8 else { continue }
             let stat   = String(cols[7])
@@ -259,12 +265,11 @@ enum Detector {
 
     // MARK: - 터미널 세션별 실행 중인 명령어
 
-    static func scanTerminalSessions() -> [Issue] {
-        let output = shell("/bin/ps", ["aux"])
+    static func scanTerminalSessions(psLines: [Substring]) -> [Issue] {
         // tty 컬럼(cols[6])이 s000~s999 형태인 프로세스
         var sessionMap: [String: [(pid: Int32, comm: String)]] = [:]
 
-        for line in output.split(separator: "\n").dropFirst() {
+        for line in psLines {
             let cols = line.split(separator: " ", omittingEmptySubsequences: true)
             guard cols.count >= 11 else { continue }
             let pidStr  = String(cols[1])
@@ -363,6 +368,7 @@ enum Detector {
     // MARK: - macOS Login Items 스캔
 
     static func scanLoginItems() -> [Issue] {
+        print("  [info] Login Items 조회 중 - 시스템이 권한 허용을 요청할 수 있습니다 (osascript)")
         let output = shell("/usr/bin/osascript", [
             "-e", "tell application \"System Events\" to get the name of every login item"
         ])
@@ -379,11 +385,10 @@ enum Detector {
 
     // MARK: - Spotlight 과부하 감지
 
-    static func scanSpotlightOverload() -> [Issue] {
-        let output = shell("/bin/ps", ["aux"])
+    static func scanSpotlightOverload(psLines: [Substring]) -> [Issue] {
         var issues: [Issue] = []
 
-        for line in output.split(separator: "\n") {
+        for line in psLines {
             guard line.contains("mds_stores") else { continue }
             let cols = line.split(separator: " ", omittingEmptySubsequences: true)
             guard cols.count >= 3,

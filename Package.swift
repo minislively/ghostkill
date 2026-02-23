@@ -5,6 +5,7 @@ import PackageDescription
 
 let package = Package(
     name: "ghostkill",
+    platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
             name: "ghostkill"),
