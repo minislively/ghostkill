@@ -380,10 +380,44 @@ enum Detector {
     // MARK: - macOS Login Items scan
 
     static func scanLoginItems() -> [Issue] {
-        print("  [info] Querying Login Items - system may request permission (osascript)")
-        let output = shell("/usr/bin/osascript", [
-            "-e", "tell application \"System Events\" to get the name of every login item"
-        ])
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", "tell application \"System Events\" to get the name of every login item"]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+
+        let sem = DispatchSemaphore(value: 0)
+        var output = ""
+
+        do {
+            try process.run()
+        } catch {
+            return []
+        }
+
+        DispatchQueue.global().async {
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            output = String(data: data, encoding: .utf8) ?? ""
+            sem.signal()
+        }
+
+        process.terminationHandler = { _ in sem.signal() }
+
+        let timeout = DispatchTime.now() + .seconds(3)
+        if sem.wait(timeout: timeout) == .timedOut {
+            process.terminate()
+            return [Issue(
+                description: "Login Items: query timed out (grant Automation permission to Terminal in System Settings > Privacy)",
+                pids: [],
+                tag: "login-item"
+            )]
+        }
+
+        // Wait for data read to complete
+        _ = sem.wait(timeout: DispatchTime.now() + .seconds(1))
+
         let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
 
@@ -439,17 +473,8 @@ enum Detector {
     // MARK: - Network status detection
 
     static func scanNetwork() -> [Issue] {
-        // networkQuality -s -c (macOS 12+) attempt
-        let nqOutput = shell("/usr/bin/networkQuality", ["-s", "-c"])
-        if !nqOutput.isEmpty {
-            // JSON parsing: responsiveness or latency field
-            // If not failed, consider network healthy; only check latency
-            // networkQuality JSON: {"responsiveness":...,"dlThroughput":...,"ulThroughput":...}
-            // Latency measured via ping fallback
-        }
-
-        // Measure latency with ping -c 3 8.8.8.8
-        let pingOutput = shell("/sbin/ping", ["-c", "3", "-t", "5", "8.8.8.8"])
+        // Measure latency with ping -c 1 8.8.8.8
+        let pingOutput = shell("/sbin/ping", ["-c", "1", "-t", "3", "8.8.8.8"])
         if pingOutput.isEmpty || pingOutput.contains("Request timeout") || pingOutput.contains("100.0% packet loss") {
             return [Issue(
                 description: "No network connection or unstable",
@@ -632,12 +657,21 @@ enum Detector {
 
         do {
             try process.run()
-            process.waitUntilExit()
         } catch {
             return ""
         }
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        // Read data on background thread BEFORE waitUntilExit to avoid pipe buffer deadlock
+        let sem = DispatchSemaphore(value: 0)
+        var data = Data()
+        DispatchQueue.global().async {
+            data = pipe.fileHandleForReading.readDataToEndOfFile()
+            sem.signal()
+        }
+
+        process.waitUntilExit()
+        sem.wait()
+
         return String(data: data, encoding: .utf8) ?? ""
     }
 }
