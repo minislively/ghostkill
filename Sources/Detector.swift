@@ -49,6 +49,54 @@ enum Detector {
             }
         }
 
+        // 3. launchctl 에이전트 감지
+        let launchctlIssues = scanLaunchctl()
+        issues.append(contentsOf: launchctlIssues)
+
+        return issues
+    }
+
+    // 알려진 불필요한 launchctl 에이전트 prefix
+    static let launchctlPrefixes: [(prefix: String, label: String)] = [
+        ("com.kiro",           "Kiro"),
+        ("com.cursor",         "Cursor"),
+        ("com.adobe",          "Adobe"),
+        ("com.google.keystone", "Google Keystone 업데이트"),
+    ]
+
+    static func scanLaunchctl() -> [Issue] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = ["list"]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return []
+        }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else { return [] }
+
+        var issues: [Issue] = []
+        for entry in launchctlPrefixes {
+            let matched = output.split(separator: "\n").filter { line in
+                line.contains(entry.prefix)
+            }.map { String($0) }
+
+            if !matched.isEmpty {
+                issues.append(Issue(
+                    description: "\(entry.label) launchctl 에이전트 \(matched.count)개 감지됨 (\(entry.prefix)*)",
+                    pids: [],
+                    tag: "launchctl"
+                ))
+            }
+        }
         return issues
     }
 
