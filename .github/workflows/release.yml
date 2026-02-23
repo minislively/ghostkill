@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - arch: arm64
+            swift_arch: arm64-apple-macosx
+          - arch: x86_64
+            swift_arch: x86_64-apple-macosx
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select latest Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '6.1'
+
+      - name: Build release binary
+        run: |
+          swift build -c release --arch ${{ matrix.arch }}
+          cp .build/${{ matrix.swift_arch }}/release/ghostkill ghostkill-${{ matrix.arch }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghostkill-${{ matrix.arch }}
+          path: ghostkill-${{ matrix.arch }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: ghostkill-arm64
+
+      - name: Download x86_64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: ghostkill-x86_64
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ghostkill-arm64
+            ghostkill-x86_64
+          generate_release_notes: true
