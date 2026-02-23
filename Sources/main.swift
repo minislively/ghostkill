@@ -1,6 +1,6 @@
 import Foundation
 
-let version = "0.1.0"
+let version = "0.2.0"
 
 func main() {
     let args = CommandLine.arguments.dropFirst()
