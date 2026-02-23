@@ -1,0 +1,12 @@
+{
+  "name": "ghostkill",
+  "description": "macOS process environment diagnostics and cleanup for Claude Code",
+  "version": "0.2.0",
+  "author": {
+    "name": "minislively",
+    "url": "https://github.com/minislively"
+  },
+  "repository": "https://github.com/minislively/ghostkill",
+  "keywords": ["macos", "process", "cleanup", "diagnostics", "zombie"],
+  "license": "MIT"
+}

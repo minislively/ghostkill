@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "GHOSTKILL=$(which ghostkill 2>/dev/null); if [ -x \"$GHOSTKILL\" ]; then OUTPUT=$(\"$GHOSTKILL\" 2>/dev/null); if echo \"$OUTPUT\" | grep -q '⚠'; then echo '=== ghostkill: environment issues detected ==='; echo \"$OUTPUT\" | grep '⚠' | head -5; echo \"Run ghostkill --fix to clean up\"; echo '=============================================='; fi; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

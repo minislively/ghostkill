@@ -1,26 +1,25 @@
 # ghostkill Claude Code Plugin
 
-A Claude Code / oh-my-claudecode plugin that integrates [ghostkill](https://github.com/veluga/ghostkill) into your Claude Code sessions.
+[![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-blue)](https://github.com/minislively/ghostkill)
+
+A Claude Code plugin that integrates [ghostkill](https://github.com/minislively/ghostkill) into your Claude Code sessions — automatically scanning your macOS environment at session start and providing on-demand diagnostics via a slash command.
 
 ## What It Does
 
 - **Session Start Hook**: Automatically scans your macOS environment when a Claude Code session begins. Warns you about zombie processes, resource pressure, or other issues — silently if everything is clean.
-- **Pre-Tool-Use Hook** (optional): Checks for critical resource issues before heavy tool invocations (Bash, Write, Edit).
 - **`/ghostkill` Skill**: A slash command to run ghostkill diagnostics on demand from within Claude Code.
 
 ## Requirements
 
-- [ghostkill](https://github.com/veluga/ghostkill) installed and on your PATH (or at `~/.local/bin/ghostkill`)
-- Claude Code with oh-my-claudecode
+- [ghostkill](https://github.com/minislively/ghostkill) binary installed and on your PATH
+- Claude Code
 
 ## Installation
 
-```bash
-cd ghostkill-plugin
-./install.sh
 ```
-
-The installer copies hooks to `~/.claude/hooks/` and the skill to `~/.claude/skills/`.
+/plugin marketplace add minislively/ghostkill
+/plugin install ghostkill
+```
 
 ## Usage
 
@@ -43,19 +42,12 @@ In any Claude Code session:
 
 ```
 ghostkill-plugin/
-  README.md              # This file
-  install.sh             # Installer script
-  hooks/
-    session-start.sh     # Runs on Claude Code session start
-    pre-tool-use.sh      # Optional: resource check before tool use
+  README.md
+  .claude-plugin/
+    plugin.json
   skills/
-    ghostkill.md         # /ghostkill slash command definition
-```
-
-## Uninstall
-
-```bash
-rm ~/.claude/hooks/ghostkill-session-start.sh
-rm ~/.claude/hooks/ghostkill-pre-tool-use.sh  # if installed
-rm ~/.claude/skills/ghostkill.md
+    ghostkill/
+      SKILL.md
+  hooks/
+    hooks.json
 ```
