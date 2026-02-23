@@ -7,7 +7,7 @@ struct Issue {
 }
 
 enum Detector {
-    // IDE가 남기는 좀비 터미널 패턴
+    // Zombie terminal patterns left by IDEs
     static let zombiePatterns: [(pattern: String, label: String)] = [
         ("kiro-cli-term",     "Kiro CLI"),
         ("cursor-cli-term",   "Cursor"),
@@ -15,17 +15,17 @@ enum Detector {
         ("windsurf-cli-term", "Windsurf"),
     ]
 
-    // 중복 실행 감지 대상
+    // Duplicate process detection targets
     static let duplicateTargets: [(name: String, threshold: Int)] = [
         ("claude", 5),
         ("node",   10),
         ("bun",    5),
     ]
 
-    // 개발용 포트 목록
+    // Development port list
     static let devPorts: [Int] = [3000, 3001, 4000, 5000, 5173, 8000, 8080, 8888, 9000]
 
-    // 고아 프로세스 제외 시스템 프로세스
+    // System process exclusions for orphan detection
     static let systemProcessExclusions: Set<String> = [
         "launchd", "kernel_task", "UserEventAgent", "loginwindow", "WindowServer",
         "mds", "mds_stores", "mdworker", "distnoted", "cfprefsd", "lsd",
@@ -39,62 +39,62 @@ enum Detector {
     static func scan() -> [Issue] {
         var issues: [Issue] = []
 
-        // 1. 좀비 터미널 세션 감지
+        // 1. Zombie terminal session detection
         for z in zombiePatterns {
             let pids = findPIDs(pattern: z.pattern)
             if !pids.isEmpty {
                 issues.append(Issue(
-                    description: "\(z.label) 좀비 터미널 세션 \(pids.count)개 발견",
+                    description: "\(z.label) zombie terminal session(s) found: \(pids.count)",
                     pids: pids,
                     tag: "zombie"
                 ))
             }
         }
 
-        // 2. 중복 프로세스 감지
+        // 2. Duplicate process detection
         for d in duplicateTargets {
             let pids = findPIDs(pattern: d.name)
             if pids.count >= d.threshold {
                 issues.append(Issue(
-                    description: "\(d.name) 인스턴스 \(pids.count)개 실행 중 (기준: \(d.threshold)개)",
+                    description: "\(d.name) has \(pids.count) instances running (threshold: \(d.threshold))",
                     pids: pids,
                     tag: "duplicate"
                 ))
             }
         }
 
-        // 3. launchctl 에이전트 감지
+        // 3. launchctl agent detection
         let launchctlIssues = scanLaunchctl()
         issues.append(contentsOf: launchctlIssues)
 
-        // 4+5+8+spotlight: ps aux 한 번만 실행해 공유
+        // 4+5+8+spotlight: run ps aux once and share
         let psLines = psAuxLines()
 
-        // 4. 높은 CPU/메모리 점유 프로세스 감지
+        // 4. High CPU/memory process detection
         let resourceIssues = scanHighResourceProcesses(psLines: psLines)
         issues.append(contentsOf: resourceIssues)
 
-        // 5. 좀비 프로세스 (Z 상태) 감지
+        // 5. Zombie processes (Z state) detection
         let zombieStateIssues = scanZombieStateProcesses(psLines: psLines)
         issues.append(contentsOf: zombieStateIssues)
 
-        // 6. 고아 프로세스 감지
+        // 6. Orphan process detection
         let orphanIssues = scanOrphanProcesses()
         issues.append(contentsOf: orphanIssues)
 
-        // 7. 포트 점유 프로세스 추적
+        // 7. Port occupancy tracking
         let portIssues = scanPortOccupancy()
         issues.append(contentsOf: portIssues)
 
-        // 8. 터미널 세션별 실행 중인 명령어 파악
+        // 8. Running commands per terminal session
         let terminalIssues = scanTerminalSessions(psLines: psLines)
         issues.append(contentsOf: terminalIssues)
 
-        // 9. nvm/rbenv/pyenv 버전 충돌 감지
+        // 9. nvm/rbenv/pyenv version conflict detection
         let versionIssues = scanVersionMismatches()
         issues.append(contentsOf: versionIssues)
 
-        // 10. macOS 시스템 레벨 감지
+        // 10. macOS system-level detection
         let loginItemIssues = scanLoginItems()
         issues.append(contentsOf: loginItemIssues)
 
@@ -104,27 +104,27 @@ enum Detector {
         let launchAgentIssues = scanLaunchAgentsDirectory()
         issues.append(contentsOf: launchAgentIssues)
 
-        // 11. Time Machine 백업 진행 중 감지
+        // 11. Time Machine backup in progress detection
         let timeMachineIssues = scanTimeMachine()
         issues.append(contentsOf: timeMachineIssues)
 
-        // 12. 네트워크 상태 감지
+        // 12. Network status detection
         let networkIssues = scanNetwork()
         issues.append(contentsOf: networkIssues)
 
-        // 13. 디스크 용량 경고
+        // 13. Disk usage warning
         let diskIssues = scanDisk()
         issues.append(contentsOf: diskIssues)
 
         return issues
     }
 
-    // 알려진 불필요한 launchctl 에이전트 prefix
+    // Known unnecessary launchctl agent prefixes
     static let launchctlPrefixes: [(prefix: String, label: String)] = [
         ("com.kiro",           "Kiro"),
         ("com.cursor",         "Cursor"),
         ("com.adobe",          "Adobe"),
-        ("com.google.keystone", "Google Keystone 업데이트"),
+        ("com.google.keystone", "Google Keystone Update"),
     ]
 
     static func scanLaunchctl() -> [Issue] {
@@ -136,7 +136,7 @@ enum Detector {
             let matched = output.split(separator: "\n").filter { $0.contains(entry.prefix) }
             if !matched.isEmpty {
                 issues.append(Issue(
-                    description: "\(entry.label) launchctl 에이전트 \(matched.count)개 감지됨 (\(entry.prefix)*)",
+                    description: "\(entry.label) launchctl agent(s) detected: \(matched.count) (\(entry.prefix)*)",
                     pids: [],
                     tag: "launchctl"
                 ))
@@ -145,7 +145,7 @@ enum Detector {
         return issues
     }
 
-    // MARK: - 높은 CPU/메모리 점유 프로세스 감지
+    // MARK: - High CPU/Memory process detection
 
     static func psAuxLines() -> [Substring] {
         let output = shell("/bin/ps", ["aux"])
@@ -173,13 +173,13 @@ enum Detector {
 
             if cpu > 80.0 {
                 issues.append(Issue(
-                    description: "\(command) CPU \(String(format: "%.1f", cpu))% 점유 중",
+                    description: "\(command) using CPU \(String(format: "%.1f", cpu))%",
                     pids: [pid],
                     tag: "resource"
                 ))
             } else if memMB > 500.0 {
                 issues.append(Issue(
-                    description: "\(command) 메모리 \(String(format: "%.0f", memMB))MB 점유 중",
+                    description: "\(command) using memory \(String(format: "%.0f", memMB))MB",
                     pids: [pid],
                     tag: "resource"
                 ))
@@ -188,7 +188,7 @@ enum Detector {
         return issues
     }
 
-    // MARK: - 좀비 프로세스 (Z 상태) 감지
+    // MARK: - Zombie processes (Z state) detection
 
     static func scanZombieStateProcesses(psLines: [Substring]) -> [Issue] {
         var zombiePIDs: [Int32] = []
@@ -205,13 +205,13 @@ enum Detector {
 
         guard !zombiePIDs.isEmpty else { return [] }
         return [Issue(
-            description: "좀비 프로세스 \(zombiePIDs.count)개 감지 (Z 상태)",
+            description: "\(zombiePIDs.count) zombie process(es) detected (Z state)",
             pids: zombiePIDs,
             tag: "zombie-state"
         )]
     }
 
-    // MARK: - 고아 프로세스 감지 (PPID == 1, 일반 사용자 프로세스)
+    // MARK: - Orphan process detection (PPID == 1, regular user processes)
 
     static func scanOrphanProcesses() -> [Issue] {
         // ps -eo pid,ppid,user,comm
@@ -232,11 +232,11 @@ enum Detector {
                   let ppid = Int32(ppidStr),
                   ppid == 1 else { continue }
 
-            // 시스템 프로세스 제외
+            // Exclude system processes
             guard !systemProcessExclusions.contains(comm) else { continue }
-            // root 및 시스템 계정 제외
+            // Exclude root and system accounts
             guard user != "root" && user != "_" && !user.hasPrefix("_") else { continue }
-            // 현재 사용자 프로세스만 포함
+            // Include only current user processes
             guard user == currentUser else { continue }
 
             orphanPIDs.append(pid)
@@ -244,13 +244,13 @@ enum Detector {
 
         guard !orphanPIDs.isEmpty else { return [] }
         return [Issue(
-            description: "고아 프로세스 \(orphanPIDs.count)개 감지 (PPID=1, 일반 사용자)",
+            description: "\(orphanPIDs.count) orphan process(es) detected (PPID=1, regular user)",
             pids: orphanPIDs,
             tag: "orphan"
         )]
     }
 
-    // MARK: - 포트 점유 프로세스 추적
+    // MARK: - Port occupancy tracking
 
     static func scanPortOccupancy() -> [Issue] {
         var issues: [Issue] = []
@@ -261,13 +261,13 @@ enum Detector {
                 .compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) }
             guard !pids.isEmpty else { continue }
 
-            // 프로세스 이름 조회
+            // Look up process name
             let firstPID = pids[0]
             let commOut = shell("/bin/ps", ["-p", "\(firstPID)", "-o", "comm="])
             let procName = commOut.trimmingCharacters(in: .whitespacesAndNewlines)
 
             issues.append(Issue(
-                description: "포트 \(port) 점유: \(procName) (PID \(firstPID))",
+                description: "Port \(port) occupied by: \(procName) (PID \(firstPID))",
                 pids: pids,
                 tag: "port"
             ))
@@ -275,10 +275,10 @@ enum Detector {
         return issues
     }
 
-    // MARK: - 터미널 세션별 실행 중인 명령어
+    // MARK: - Running commands per terminal session
 
     static func scanTerminalSessions(psLines: [Substring]) -> [Issue] {
-        // tty 컬럼(cols[6])이 s000~s999 형태인 프로세스
+        // tty column (cols[6]) in s000~s999 form
         var sessionMap: [String: [(pid: Int32, comm: String)]] = [:]
 
         for line in psLines {
@@ -292,7 +292,7 @@ enum Detector {
                   tty.dropFirst().allSatisfy({ $0.isNumber }),
                   let pid = Int32(pidStr) else { continue }
 
-            // zsh/bash/sh 제외
+            // Exclude zsh/bash/sh
             let baseCmd = String(command.split(separator: "/").last ?? Substring(command))
                 .split(separator: " ").first.map(String.init) ?? command
             let shellNames: Set<String> = ["zsh", "bash", "sh", "fish", "tcsh", "csh", "-zsh", "-bash"]
@@ -307,7 +307,7 @@ enum Detector {
         for (tty, procs) in sessionMap.sorted(by: { $0.key < $1.key }) {
             let desc = procs.map { "\($0.comm)(PID \($0.pid))" }.joined(separator: ", ")
             issues.append(Issue(
-                description: "터미널 \(tty): \(desc)",
+                description: "Terminal \(tty): \(desc)",
                 pids: procs.map { $0.pid },
                 tag: "terminal-session"
             ))
@@ -315,13 +315,13 @@ enum Detector {
         return issues
     }
 
-    // MARK: - nvm/rbenv/pyenv 버전 충돌 감지
+    // MARK: - nvm/rbenv/pyenv version mismatch detection
 
     static func scanVersionMismatches() -> [Issue] {
         var issues: [Issue] = []
         let home = ProcessInfo.processInfo.environment["HOME"] ?? ""
 
-        // Node.js 버전 확인
+        // Node.js version check
         let nvmrcPath = "\(home)/.nvmrc"
         let nodeVersionPath = "\(home)/.node-version"
         var expectedNode: String? = nil
@@ -337,14 +337,14 @@ enum Detector {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if !actual.isEmpty && !actual.hasPrefix(expected.hasPrefix("v") ? expected : "v\(expected)") {
                 issues.append(Issue(
-                    description: "Node.js 버전 불일치 - 현재: \(actual), 기대: \(expected)",
+                    description: "Node.js version mismatch - current: \(actual), expected: \(expected)",
                     pids: [],
                     tag: "version-mismatch"
                 ))
             }
         }
 
-        // Ruby 버전 확인
+        // Ruby version check
         let rubyVersionPath = "\(home)/.ruby-version"
         if let expected = try? String(contentsOfFile: rubyVersionPath, encoding: .utf8) {
             let expectedTrimmed = expected.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -352,14 +352,14 @@ enum Detector {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if !actual.isEmpty && !actual.contains(expectedTrimmed) {
                 issues.append(Issue(
-                    description: "Ruby 버전 불일치 - 현재: \(actual), 기대: \(expectedTrimmed)",
+                    description: "Ruby version mismatch - current: \(actual), expected: \(expectedTrimmed)",
                     pids: [],
                     tag: "version-mismatch"
                 ))
             }
         }
 
-        // Python 버전 확인
+        // Python version check
         let pythonVersionPath = "\(home)/.python-version"
         if let expected = try? String(contentsOfFile: pythonVersionPath, encoding: .utf8) {
             let expectedTrimmed = expected.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -367,7 +367,7 @@ enum Detector {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if !actual.isEmpty && !actual.contains(expectedTrimmed) {
                 issues.append(Issue(
-                    description: "Python 버전 불일치 - 현재: \(actual), 기대: \(expectedTrimmed)",
+                    description: "Python version mismatch - current: \(actual), expected: \(expectedTrimmed)",
                     pids: [],
                     tag: "version-mismatch"
                 ))
@@ -377,10 +377,10 @@ enum Detector {
         return issues
     }
 
-    // MARK: - macOS Login Items 스캔
+    // MARK: - macOS Login Items scan
 
     static func scanLoginItems() -> [Issue] {
-        print("  [info] Login Items 조회 중 - 시스템이 권한 허용을 요청할 수 있습니다 (osascript)")
+        print("  [info] Querying Login Items - system may request permission (osascript)")
         let output = shell("/usr/bin/osascript", [
             "-e", "tell application \"System Events\" to get the name of every login item"
         ])
@@ -389,13 +389,13 @@ enum Detector {
 
         let items = trimmed.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         return [Issue(
-            description: "Login Items \(items.count)개 등록됨: \(items.joined(separator: ", "))",
+            description: "\(items.count) Login Item(s) registered: \(items.joined(separator: ", "))",
             pids: [],
             tag: "login-item"
         )]
     }
 
-    // MARK: - Spotlight 과부하 감지
+    // MARK: - Spotlight overload detection
 
     static func scanSpotlightOverload(psLines: [Substring]) -> [Issue] {
         var issues: [Issue] = []
@@ -409,7 +409,7 @@ enum Detector {
                   cpu > 50.0 else { continue }
 
             issues.append(Issue(
-                description: "Spotlight(mds_stores) CPU \(String(format: "%.1f", cpu))% 과부하",
+                description: "Spotlight(mds_stores) CPU overload \(String(format: "%.1f", cpu))%",
                 pids: [pid],
                 tag: "resource"
             ))
@@ -417,7 +417,7 @@ enum Detector {
         return issues
     }
 
-    // MARK: - LaunchAgents 디렉토리 스캔
+    // MARK: - LaunchAgents directory scan
 
     static func scanLaunchAgentsDirectory() -> [Issue] {
         let home = ProcessInfo.processInfo.environment["HOME"] ?? ""
@@ -430,35 +430,35 @@ enum Detector {
         guard !plists.isEmpty else { return [] }
 
         return [Issue(
-            description: "~/Library/LaunchAgents에 plist \(plists.count)개 등록됨",
+            description: "~/Library/LaunchAgents has \(plists.count) plist(s) registered",
             pids: [],
             tag: "launch-agent"
         )]
     }
 
-    // MARK: - 네트워크 상태 감지
+    // MARK: - Network status detection
 
     static func scanNetwork() -> [Issue] {
-        // networkQuality -s -c (macOS 12+) 시도
+        // networkQuality -s -c (macOS 12+) attempt
         let nqOutput = shell("/usr/bin/networkQuality", ["-s", "-c"])
         if !nqOutput.isEmpty {
-            // JSON 파싱: responsiveness 또는 latency 필드
-            // 실패하지 않았으면 네트워크 양호로 간주, 지연만 체크
+            // JSON parsing: responsiveness or latency field
+            // If not failed, consider network healthy; only check latency
             // networkQuality JSON: {"responsiveness":...,"dlThroughput":...,"ulThroughput":...}
-            // 지연은 ping fallback으로 측정
+            // Latency measured via ping fallback
         }
 
-        // ping -c 3 8.8.8.8 으로 지연 측정
+        // Measure latency with ping -c 3 8.8.8.8
         let pingOutput = shell("/sbin/ping", ["-c", "3", "-t", "5", "8.8.8.8"])
         if pingOutput.isEmpty || pingOutput.contains("Request timeout") || pingOutput.contains("100.0% packet loss") {
             return [Issue(
-                description: "네트워크 연결 없음 또는 불안정",
+                description: "No network connection or unstable",
                 pids: [],
                 tag: "network"
             )]
         }
 
-        // avg rtt 파싱: "round-trip min/avg/max/stddev = 1.234/5.678/9.012/1.000 ms"
+        // Parse avg rtt: "round-trip min/avg/max/stddev = 1.234/5.678/9.012/1.000 ms"
         for line in pingOutput.split(separator: "\n") {
             let l = String(line)
             if l.contains("round-trip") || l.contains("rtt") {
@@ -470,7 +470,7 @@ enum Detector {
                     if nums.count >= 2, let avg = Double(String(nums[1]).trimmingCharacters(in: .whitespaces)) {
                         if avg >= 200.0 {
                             return [Issue(
-                                description: "네트워크 지연 높음 (\(String(format: "%.0f", avg))ms)",
+                                description: "High network latency (\(String(format: "%.0f", avg))ms)",
                                 pids: [],
                                 tag: "network"
                             )]
@@ -483,19 +483,19 @@ enum Detector {
         return []
     }
 
-    // MARK: - 디스크 용량 경고
+    // MARK: - Disk usage warning
 
     static func scanDisk() -> [Issue] {
         let output = shell("/bin/df", ["-h", "/"])
-        // df -h 출력: Filesystem  Size  Used  Avail  Capacity  iused  ifree  %iused  Mounted
-        // macOS 형식: Filesystem   Size   Used  Avail Capacity iused      ifree %iused  Mounted on
+        // df -h output: Filesystem  Size  Used  Avail  Capacity  iused  ifree  %iused  Mounted
+        // macOS format: Filesystem   Size   Used  Avail Capacity iused      ifree %iused  Mounted on
         for line in output.split(separator: "\n").dropFirst() {
             let cols = line.split(separator: " ", omittingEmptySubsequences: true)
             // macOS df -h: Filesystem Size Used Avail Capacity(%) iused ifree %iused Mounted
-            // capacity는 5번째 컬럼 (index 4) 또는 "Use%" 컬럼
+            // capacity is 5th column (index 4) or "Use%" column
             guard cols.count >= 5 else { continue }
 
-            // capacity 컬럼 찾기: "XX%" 형태
+            // Find capacity column: "XX%" form
             var capacityStr: String? = nil
             var availStr: String? = nil
             for (i, col) in cols.enumerated() {
@@ -503,7 +503,7 @@ enum Detector {
                 if s.hasSuffix("%"), let pct = Int(s.dropLast()) {
                     _ = pct
                     capacityStr = s
-                    // avail은 capacity 바로 앞 컬럼
+                    // avail is the column immediately before capacity
                     if i > 0 { availStr = String(cols[i - 1]) }
                     break
                 }
@@ -515,7 +515,7 @@ enum Detector {
 
             let avail = availStr ?? "?"
             return [Issue(
-                description: "디스크 용량 부족 - \(pct)% 사용 중 (남은 용량: \(avail))",
+                description: "Low disk space - \(pct)% used (available: \(avail))",
                 pids: [],
                 tag: "disk"
             )]
@@ -523,11 +523,11 @@ enum Detector {
         return []
     }
 
-    // MARK: - 특정 앱 상세 리포트
+    // MARK: - Specific app detailed report
 
     static func scanApp(name: String) -> String {
         var lines: [String] = []
-        lines.append("=== \(name) 프로세스 상세 리포트 ===\n")
+        lines.append("=== \(name) Process Detailed Report ===\n")
 
         let psOutput = shell("/bin/ps", ["aux"])
         let psLines = psOutput.split(separator: "\n").dropFirst()
@@ -540,7 +540,7 @@ enum Detector {
             guard cols.count >= 11,
                   let pid = Int32(String(cols[1])) else { continue }
 
-            // ghostkill 자신 제외
+            // Exclude ghostkill itself
             if pid == ProcessInfo.processInfo.processIdentifier { continue }
 
             let cpu    = String(cols[2])
@@ -551,47 +551,47 @@ enum Detector {
             let cmd    = cols[10...].joined(separator: " ")
 
             lines.append("PID: \(pid)")
-            lines.append("  명령어: \(cmd)")
-            lines.append("  CPU:   \(cpu)%")
-            lines.append("  메모리: \(String(format: "%.1f", Double(rssKB) / 1024.0))MB")
-            lines.append("  상태:  \(stat)")
-            lines.append("  시작:  \(start)  실행시간: \(time)")
+            lines.append("  Command:  \(cmd)")
+            lines.append("  CPU:      \(cpu)%")
+            lines.append("  Memory:   \(String(format: "%.1f", Double(rssKB) / 1024.0))MB")
+            lines.append("  State:    \(stat)")
+            lines.append("  Started:  \(start)  Runtime: \(time)")
 
-            // 포트 점유 확인
+            // Check port occupancy
             let lsofOut = shell("/usr/sbin/lsof", ["-p", "\(pid)", "-i"])
             let ports = lsofOut.split(separator: "\n").dropFirst()
                 .filter { $0.contains("LISTEN") || $0.contains("ESTABLISHED") }
             if !ports.isEmpty {
-                lines.append("  포트 점유:")
+                lines.append("  Ports:")
                 for p in ports {
                     lines.append("    \(p)")
                 }
             } else {
-                lines.append("  포트 점유: 없음")
+                lines.append("  Ports: none")
             }
             lines.append("")
             foundPIDs.append(pid)
         }
 
         if foundPIDs.isEmpty {
-            lines.append("'\(name)' 프로세스를 찾을 수 없습니다.")
+            lines.append("No '\(name)' process found.")
         } else {
-            lines.append("총 \(foundPIDs.count)개 프로세스 발견")
+            lines.append("Total \(foundPIDs.count) process(es) found")
         }
 
         return lines.joined(separator: "\n")
     }
 
-    // MARK: - Time Machine 백업 감지
+    // MARK: - Time Machine backup detection
 
     static func scanTimeMachine() -> [Issue] {
         let output = shell("/usr/bin/tmutil", ["status"])
         guard !output.isEmpty else { return [] }
 
-        // Running = 1 이면 백업 진행 중
+        // Running = 1 means backup in progress
         guard output.contains("Running = 1") else { return [] }
 
-        // 진행률 파싱 (있으면)
+        // Parse progress (if available)
         var progressInfo = ""
         for line in output.split(separator: "\n") {
             let l = line.trimmingCharacters(in: .whitespaces)
@@ -600,13 +600,13 @@ enum Detector {
                     .replacingOccurrences(of: ";", with: "")
                     .trimmingCharacters(in: .whitespaces)
                 if let pct = Double(val) {
-                    progressInfo = " (\(String(format: "%.0f", pct * 100))% 완료)"
+                    progressInfo = " (\(String(format: "%.0f", pct * 100))% complete)"
                 }
             }
         }
 
         return [Issue(
-            description: "Time Machine 백업 진행 중\(progressInfo) - 시스템 느릴 수 있음",
+            description: "Time Machine backup in progress\(progressInfo) - system may be slow",
             pids: [],
             tag: "timemachine"
         )]

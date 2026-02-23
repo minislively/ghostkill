@@ -6,16 +6,12 @@ on:
       - 'v*'
 
 jobs:
-  build:
-    name: Build ${{ matrix.arch }}
+  release:
+    name: Build and Release
     runs-on: macos-latest
-    strategy:
-      matrix:
-        include:
-          - arch: arm64
-            swift_arch: arm64-apple-macosx
-          - arch: x86_64
-            swift_arch: x86_64-apple-macosx
+
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -27,39 +23,19 @@ jobs:
           swift-version: '6.1'
 
       - name: Build release binary
+        run: swift build -c release -Xswiftc -O
+
+      - name: Generate SHA256 checksum
         run: |
-          swift build -c release --arch ${{ matrix.arch }}
-          cp .build/${{ matrix.swift_arch }}/release/ghostkill ghostkill-${{ matrix.arch }}
+          shasum -a 256 .build/release/ghostkill > ghostkill.sha256
+          cat ghostkill.sha256
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ghostkill-${{ matrix.arch }}
-          path: ghostkill-${{ matrix.arch }}
-
-  release:
-    name: Create GitHub Release
-    needs: build
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download arm64 binary
-        uses: actions/download-artifact@v4
-        with:
-          name: ghostkill-arm64
-
-      - name: Download x86_64 binary
-        uses: actions/download-artifact@v4
-        with:
-          name: ghostkill-x86_64
-
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            ghostkill-arm64
-            ghostkill-x86_64
-          generate_release_notes: true
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            .build/release/ghostkill \
+            ghostkill.sha256
